@@ -1,5 +1,6 @@
 library(shiny)
 library(jsonlite)
+library(curl)
 
 parkingPlaces <- fromJSON("https://www.oulunliikenne.fi/public_traffic_api/parking/parkingstations.php")
 parkingPlaces$parkingstation$address <- "address"
