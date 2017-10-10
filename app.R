@@ -28,39 +28,46 @@ for(i in 1:length(parkingPlaces$parkingstation$id)){
   }
 }
 
-# Function to fetch free spaces
-fetchFreeSpaces <- function(){
-  for(i in 1:length(parkingPlaces$parkingstation$id)){
-    detailUrl <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=", as.character(parkingPlaces$parkingstation[i, 1]), collapse = NULL)
-    parkingPlace <- fromJSON(detailUrl)
-    # if(i == 1){
-    #   timeFetched <<- parkingPlace$timestamp
-    # }
-    if("freespace" %in% names(parkingPlace)){
-      #parkingPlaces$parkingstation[i,4] <- parkingPlace$address
-      parkingPlaces$parkingstation[i,5] <- parkingPlace$timestamp
-      parkingPlaces$parkingstation[i,6] <<- parkingPlace$freespace
-      #parkingPlaces$parkingstation[i,6] <- parkingPlace$totalspace
-    } else {
-      #parkingPlaces$parkingstation[i,4] <- parkingPlace$address
-      next
-      #parkingPlaces$parkingstation[i,4] <- "0"
-    }
-  }
-}
+# # Function to fetch free spaces
+# fetchFreeSpaces <- function(){
+#   for(i in 1:length(parkingPlaces$parkingstation$id)){
+#     detailUrl <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=", as.character(parkingPlaces$parkingstation[i, 1]), collapse = NULL)
+#     parkingPlace <- fromJSON(detailUrl)
+#     # if(i == 1){
+#     #   timeFetched <<- parkingPlace$timestamp
+#     # }
+#     if("freespace" %in% names(parkingPlace)){
+#       #parkingPlaces$parkingstation[i,4] <- parkingPlace$address
+#       parkingPlaces$parkingstation[i,5] <- parkingPlace$timestamp
+#       parkingPlaces$parkingstation[i,6] <<- parkingPlace$freespace
+#       #parkingPlaces$parkingstation[i,6] <- parkingPlace$totalspace
+#     } else {
+#       #parkingPlaces$parkingstation[i,4] <- parkingPlace$address
+#       next
+#       #parkingPlaces$parkingstation[i,4] <- "0"
+#     }
+#   }
+# }
 
 # UI
 ui <- fluidPage(
   
   # Application title
-  titlePanel("Free parking spaces in Oulu:"),
+  titlePanel("Free parking spaces in Oulu"),
   fluidRow(
     column(
-      12,
-      plotOutput("barChart")
+      3,
+      #plotOutput("barChart")
+      h2("Select a parking place to see the details:"),
+      selectInput("selectedParkingPlace", NULL, 
+                  choices = parkingPlaces$parkingstation$name,
+                  selected = NULL),
+      htmlOutput("result")
+      #textOutput("result")
     ),
     column(
-      12,
+      9,
+      plotOutput("barChart"),
       h2("Original Data from Oulu city:"),
       # textOutput("timeFetched"),
       tableOutput("table")
@@ -77,6 +84,11 @@ server <- function(input, output) {
   })
   # output$timeFetched <- renderText(timeFetched)
   output$table <- renderTable(parkingPlaces$parkingstation)
+  output$result <- renderText({
+    parkingPlaceDetails <- parkingPlaces$parkingstation[parkingPlaces$parkingstation$name == input$selectedParkingPlace,]
+    
+    paste("On", parkingPlaceDetails$timestamp,"<br>", parkingPlaceDetails$name, "has" , parkingPlaceDetails$freespace, "free spaces")
+    })
 }
 
 # Run the application 
