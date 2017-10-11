@@ -51,6 +51,15 @@ for(i in 1:length(parkingPlaces$parkingstation$id)){
 
 # UI
 ui <- fluidPage(
+  # CSS
+  tags$head(
+    tags$style(HTML("
+      #result {
+        color: blue;
+      }
+    ")
+    )
+  ),
   
   # Application title
   titlePanel("Free parking spaces in Oulu"),
@@ -59,7 +68,7 @@ ui <- fluidPage(
       3,
       #plotOutput("barChart")
       h2("Select a parking place to see the details:"),
-      selectInput("selectedParkingPlace", NULL, 
+      selectInput("selectedParkingPlace", NULL,
                   choices = parkingPlaces$parkingstation$name,
                   selected = NULL),
       htmlOutput("result")
@@ -70,7 +79,11 @@ ui <- fluidPage(
       plotOutput("barChart"),
       h2("Original Data from Oulu city:"),
       # textOutput("timeFetched"),
-      tableOutput("table")
+      tableOutput("table"),
+      p("Data is fetched from the APIs below:"),
+      tags$a(href="https://www.oulunliikenne.fi/public_traffic_api/parking/parkingstations.php", "www.oulunliikenne.fi/public_traffic_api/parking/parkingstations.php"),
+      tags$br(),
+      tags$a(href="https://www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=2", "www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=2")
     )
   )
 )
@@ -80,13 +93,13 @@ server <- function(input, output) {
   
   output$barChart <- renderPlot({
     freespaces <- as.numeric(parkingPlaces$parkingstation$freespace)
-    barplot(freespaces, xlab ="parking places", ylab="free spaces", names.arg = parkingPlaces$parkingstation$name)
+    barplot(freespaces, xlab ="parking places", ylab="free spaces", names.arg = parkingPlaces$parkingstation$name, col = "orange")
   })
   # output$timeFetched <- renderText(timeFetched)
   output$table <- renderTable(parkingPlaces$parkingstation)
   output$result <- renderText({
     parkingPlaceDetails <- parkingPlaces$parkingstation[parkingPlaces$parkingstation$name == input$selectedParkingPlace,]
-    
+
     paste("On", parkingPlaceDetails$timestamp,"<br>", parkingPlaceDetails$name, "has" , parkingPlaceDetails$freespace, "free spaces")
     })
 }
