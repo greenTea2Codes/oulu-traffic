@@ -2,21 +2,41 @@ library(shiny)
 library(jsonlite)
 library(RPostgreSQL)
 
+# define variables for handling database exception
+dbError <- FALSE
+dbErrorMsg <- character()
+
 # connect to a local postgreDB
 pw <- { 
   "myPostgres" 
 }
 postgreDriver <- dbDriver("PostgreSQL")
-connection <- dbConnect(postgreDriver, dbname = "dalun",
-                        host = "localhost", port = 5432,
-                        user = "dalun", password = pw)
+connection <- tryCatch(
+  # test database exception
+  # dbConnect(postgreDriver, dbname = "dalun",host = "localhost", port = 5431, user = "dalun", password = pw),
+  
+  dbConnect(postgreDriver, dbname = "dalun",host = "localhost", port = 5432, user = "dalun", password = pw),
+  error = function(e){
+    print(e)
+    dbError <<- TRUE
+    dbErrorMsg <<- e
+  }
+)
 
 # remove the password from the environment
 rm(pw)
 
+# create an empty dataframe mapping the parking_station table
+df_parkingstations <- data.frame(
+  station_id <- integer(length = 0),
+  geom <- character(),
+  name <- character()
+)
 # fetch data from the table parking_station
-df_parkingstations <- dbGetQuery(connection, 
-                          "SELECT * from parking_station")
+if(dbError != TRUE){
+  df_parkingstations <- dbGetQuery(connection, 
+                                   "SELECT * from parking_station")
+}
 
 # create a dataframe for storing details for each station
 # and mapping the table freespaces_update
@@ -27,64 +47,56 @@ df_parkingstations_details$address <- character()
 df_parkingstations_details$freespaces <- integer()
 df_parkingstations_details$totalspaces <- integer()
 
-# # function
-# fetchDataFromAPI <- function(df_parkingstations, df_parkingstations_details, i){
-#   api_url <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking_details.php?parkingid=", as.character(df_parkingstations[i, 1]), collapse = NULL)
-#   # api_url <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=", as.character(df_parkingstations[i, 1]), collapse = NULL)
-#   parkingstation_details <- fromJSON(api_url)
-#   df_parkingstations_details[i, 1] <- parkingstation_details$name
-#   df_parkingstations_details[i, 2] <- parkingstation_details$timestamp
-#   df_parkingstations_details[i, 3] <- parkingstation_details$address
-#   if("freespace" %in% names(parkingstation_details)){
-#     df_parkingstations_details[i, 4] <- as.integer(parkingstation_details$freespace)
-#     df_parkingstations_details[i, 5] <- as.integer(parkingstation_details$totalspace)
-#   } else {
-#     df_parkingstations_details[i, 4] <- 0
-#     df_parkingstations_details[i, 5] <- 0
-#   }
-# }
-
-# variables for error handling
+# variables for api error handling
 apiError <- FALSE
 apiErrorMsg <- character()
 
 # fetch parking station details from an API
-for(i in 1:nrow(df_parkingstations)){
-  api_url <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=", as.character(df_parkingstations[i, 1]), collapse = NULL)
-  # for testing
-  # if(i == 2){
-  #   api_url <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking_details.php?parkingid=", as.character(df_parkingstations[i, 1]), collapse = NULL)
-  # }
-  parkingstation_details <- tryCatch(
-    fromJSON(api_url), 
-    error = function(e){
-      apiError <<- TRUE
-      apiErrorMsg <<- e
-    });
-  print(paste("apiError at line 59: ", apiError))
-  if(apiError == TRUE) break;
-  df_parkingstations_details[i, 1] <- parkingstation_details$name
-  df_parkingstations_details[i, 2] <- parkingstation_details$timestamp
-  df_parkingstations_details[i, 3] <- parkingstation_details$address
-  if("freespace" %in% names(parkingstation_details)){
-    df_parkingstations_details[i, 4] <- as.integer(parkingstation_details$freespace)
-    df_parkingstations_details[i, 5] <- as.integer(parkingstation_details$totalspace)
-  } else {
-    df_parkingstations_details[i, 4] <- 0
-    df_parkingstations_details[i, 5] <- 0
+if(nrow(df_parkingstations) > 0){
+  for(i in 1:nrow(df_parkingstations)){
+    api_url <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking/parking_details.php?parkingid=", as.character(df_parkingstations[i, 1]), collapse = NULL)
+    # for testing
+    # if(i == 2){
+    #   api_url <- paste0("https://www.oulunliikenne.fi/public_traffic_api/parking_details.php?parkingid=", as.character(df_parkingstations[i, 1]), collapse = NULL)
+    # }
+    parkingstation_details <- tryCatch(
+      fromJSON(api_url), 
+      error = function(e){
+        apiError <<- TRUE
+        apiErrorMsg <<- paste(api_url,"<br>",
+                              e, "<br>",
+                              "<br>",
+                              "Fetched data is incomplete,","<br>",
+                              "therefore it has not been stored in the database")
+        # apiErrorMsg <<- e
+      });
+    # print(paste("apiError at line 59: ", apiError))
+    if(apiError == TRUE) break;
+    df_parkingstations_details[i, 1] <- parkingstation_details$name
+    df_parkingstations_details[i, 2] <- parkingstation_details$timestamp
+    df_parkingstations_details[i, 3] <- parkingstation_details$address
+    if("freespace" %in% names(parkingstation_details)){
+      df_parkingstations_details[i, 4] <- as.integer(parkingstation_details$freespace)
+      df_parkingstations_details[i, 5] <- as.integer(parkingstation_details$totalspace)
+    } else {
+      df_parkingstations_details[i, 4] <- 0
+      df_parkingstations_details[i, 5] <- 0
+    }
   }
 }
-
 # write data to the table 
-if(apiError != TRUE){
+if(dbError != TRUE && apiError != TRUE){
   dbWriteTable(connection, "freespaces_update", 
                value = df_parkingstations_details, 
                append = TRUE, row.names = FALSE)
 }
 
 # close db connection
-dbDisconnect(connection)
-dbUnloadDriver(postgreDriver)
+if(dbError != TRUE){
+  dbDisconnect(connection)
+  dbUnloadDriver(postgreDriver)
+}
+
 
 # UI
 ui <- fluidPage(
@@ -93,6 +105,9 @@ ui <- fluidPage(
     tags$style(HTML("
       #result {
         color: blue;
+      }
+      #dbWarningMsg, #apiWarningMsg{
+        color: red;
       }
     ")
     )
@@ -103,6 +118,7 @@ ui <- fluidPage(
   fluidRow(
     column(
       3,
+      htmlOutput("dbWarningMsg"),
       h2("Select a parking place to see the details:"),
       selectInput("selectedParkingPlace", NULL,
                   choices = df_parkingstations$name,
@@ -111,7 +127,7 @@ ui <- fluidPage(
     ),
     column(
       9,
-      htmlOutput("warningMsg"),
+      htmlOutput("apiWarningMsg"),
       plotOutput("barChart"),
       h2("Data fetched from Oulu city API:"),
       tableOutput("table"),
@@ -123,22 +139,30 @@ ui <- fluidPage(
 
 # Define required server logic
 server <- function(input, output) {
+  if(apiError == TRUE){
+    output$apiWarningMsg <- renderText({
+      paste(apiErrorMsg)
+    })
+  }
   if(is.data.frame(df_parkingstations_details) && nrow(df_parkingstations_details) > 0){
-    print(is.data.frame(df_parkingstations_details))
-    print(nrow(df_parkingstations_details))
+    # print(is.data.frame(df_parkingstations_details))
+    # print(nrow(df_parkingstations_details))
     output$barChart <- renderPlot({
       freespaces <- as.numeric(df_parkingstations_details$freespaces)
       barplot(freespaces, xlab ="parking places", ylab="free spaces", names.arg = df_parkingstations_details$name, col = "orange")
     })
     output$table <- renderTable(df_parkingstations_details, digits = 0)
   } else {
-    output$warningMsg <- renderText({
-      paste(apiErrorMsg)
+    # output$apiWarningMsg <- renderText({
+    #   paste(apiErrorMsg)
+    # })
+    output$dbWarningMsg <- renderText({
+      paste(dbErrorMsg)
     })
   }
   output$result <- renderText({
     parkingPlaceDetails <- df_parkingstations_details[df_parkingstations_details$name == input$selectedParkingPlace,]
-    print(parkingPlaceDetails)
+    # print(parkingPlaceDetails)
     if(nrow(parkingPlaceDetails) != 0){
       paste("On", parkingPlaceDetails$timestamp,"<br>", parkingPlaceDetails$name, "has" , parkingPlaceDetails$freespaces, "free spaces")
     } else {
